@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    working_dir: /app
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-720}
+      STALE_AFTER_SECONDS: ${STALE_AFTER_SECONDS:-10}
+      MAX_STREAM_QUEUE: ${MAX_STREAM_QUEUE:-128}
+      TELEMETRY_BUFFER_SIZE: ${TELEMETRY_BUFFER_SIZE:-2048}
+      APP_USERS_JSON: '${APP_USERS_JSON:-{"operator":{"password":"demo123","role":"operator"},"admin":{"password":"admin123","role":"admin"}}}'
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    working_dir: /app
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: digital_twin
+      POSTGRES_USER: twin
+      POSTGRES_PASSWORD: twin
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
