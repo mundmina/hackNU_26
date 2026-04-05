@@ -84,6 +84,29 @@ class HealthIndexEngineTests(unittest.TestCase):
         self.assertIn(snapshot.grade, {"D", "E"})
         self.assertTrue(snapshot.factors)
 
+    def test_kz8a_electrical_thresholds_contribute_to_health_drop(self) -> None:
+        electric = self._build_event(
+            locomotive_id="KZ8A-002",
+            locomotive_type="KZ8A",
+            fuel_level_pct=None,
+            fuel_consumption_lph=None,
+            catenary_voltage_kv=18.4,
+            traction_circuit_voltage_v=1750,
+            electric_power_kw=7150,
+            battery_voltage_v=91,
+            auxiliary_power_load_kw=182,
+            transformer_oil_temp_c=98,
+            turbocharger_rpm=79000,
+            rail_surface_state="oily",
+        )
+        snapshot = self.engine.evaluate(electric)
+        factor_keys = {factor.key for factor in snapshot.factors}
+
+        self.assertLess(snapshot.score, 80)
+        self.assertIn("catenary_voltage", factor_keys)
+        self.assertIn("traction_voltage", factor_keys)
+        self.assertIn("battery_voltage", factor_keys)
+
 
 if __name__ == "__main__":
     unittest.main()

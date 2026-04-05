@@ -83,7 +83,7 @@ def build_event(locomotive_id: str, locomotive_type: str, tick: int, degraded: b
 
 def post_event(base_url: str, token: str, payload: dict[str, object]) -> None:
     request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/api/telemetry",
+        f"{base_url.rstrip('/')}/telemetry",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method="POST",
@@ -94,7 +94,7 @@ def post_event(base_url: str, token: str, payload: dict[str, object]) -> None:
 
 def login(base_url: str, username: str, password: str) -> str:
     request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/api/auth/login",
+        f"{base_url.rstrip('/')}/auth/login",
         data=json.dumps({"username": username, "password": password}).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",

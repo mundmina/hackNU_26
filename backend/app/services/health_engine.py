@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC
 
 from app.schemas.health import HealthFactor, HealthSnapshot
 from app.schemas.telemetry import TelemetryEvent
@@ -56,14 +56,36 @@ class HealthIndexEngine:
             ),
             self._high_is_bad(
                 telemetry.fuel_consumption_lph or telemetry.electric_power_kw or 0,
-                300,
-                600 if telemetry.locomotive_type == "TE33A" else 7000,
+                5000 if telemetry.locomotive_type == "KZ8A" else 300,
+                7000 if telemetry.locomotive_type == "KZ8A" else 600,
                 0.08,
                 "resource_burn",
                 "Resource burn",
                 "load",
                 "fuel or electric power draw",
-                suffix="units",
+                suffix="kW/Lh",
+            ),
+            self._high_is_bad(
+                telemetry.traction_motor_current_a,
+                900,
+                1300,
+                0.07,
+                "motor_current",
+                "Traction motor current",
+                "load",
+                "traction motor current above norm",
+                suffix="A",
+            ),
+            self._high_is_bad(
+                telemetry.traction_motor_torque_nm,
+                3000,
+                4500,
+                0.06,
+                "motor_torque",
+                "Traction motor torque",
+                "load",
+                "traction motor torque above norm",
+                suffix="N·m",
             ),
             self._high_is_bad(
                 abs(telemetry.track_gradient_permille),
@@ -75,6 +97,17 @@ class HealthIndexEngine:
                 "load",
                 "route gradient stress",
                 suffix="‰",
+            ),
+            self._high_is_bad(
+                telemetry.auxiliary_power_load_kw,
+                120,
+                180,
+                0.04,
+                "auxiliary_load",
+                "Auxiliary power load",
+                "load",
+                "auxiliary systems drawing excessive power",
+                suffix="kW",
             ),
         ]
 
@@ -146,6 +179,17 @@ class HealthIndexEngine:
                 suffix="°C",
             ),
             self._high_is_bad(
+                telemetry.turbocharger_rpm,
+                62000,
+                78000,
+                0.06,
+                "turbo_rpm",
+                "Turbocharger speed",
+                "health",
+                "turbocharger speed above norm",
+                suffix="rpm",
+            ),
+            self._high_is_bad(
                 telemetry.traction_motor_winding_temp_c,
                 120,
                 160,
@@ -178,6 +222,52 @@ class HealthIndexEngine:
                 "vibration above norm",
                 suffix="mm/s",
             ),
+            self._range_is_bad(
+                telemetry.catenary_voltage_kv,
+                20,
+                28,
+                19,
+                28.5,
+                0.08,
+                "catenary_voltage",
+                "Catenary voltage",
+                "health",
+                "catenary voltage outside nominal window",
+                suffix="kV",
+            ),
+            self._low_is_bad(
+                telemetry.traction_circuit_voltage_v if telemetry.traction_circuit_voltage_v is not None else 2400,
+                2400,
+                1800,
+                0.08,
+                "traction_voltage",
+                "Traction circuit voltage",
+                "health",
+                "traction circuit voltage below norm",
+                suffix="V",
+            ),
+            self._low_is_bad(
+                telemetry.battery_voltage_v,
+                100,
+                92,
+                0.07,
+                "battery_voltage",
+                "Battery voltage",
+                "health",
+                "battery voltage below norm",
+                suffix="V",
+            ),
+            self._high_is_bad(
+                max(telemetry.ambient_temperature_c, 0),
+                38,
+                48,
+                0.04,
+                "ambient_temp",
+                "Ambient temperature",
+                "health",
+                "ambient temperature above norm",
+                suffix="°C",
+            ),
             self._high_is_bad(
                 telemetry.vertical_dynamics_coefficient,
                 0.8,
@@ -200,13 +290,24 @@ class HealthIndexEngine:
                 "high frame force",
                 suffix="kN",
             ),
+            self._categorical_penalty(
+                telemetry.rail_surface_state,
+                penalties={
+                    "wet": (0.04, "rail surface wet"),
+                    "oily": (0.09, "rail surface oily"),
+                },
+                key="rail_surface_state",
+                label="Rail surface state",
+                category="health",
+                suffix="state",
+            ),
         ]
 
         reliability_results = [
             self._high_is_bad(
                 float(telemetry.active_error_codes),
                 1,
-                4,
+                5,
                 0.1,
                 "error_codes",
                 "Active error codes",
@@ -224,6 +325,17 @@ class HealthIndexEngine:
                 "reliability",
                 "frequent control-system faults",
                 suffix="events/h",
+            ),
+            self._low_is_bad(
+                telemetry.compressor_discharge_pressure_mpa,
+                0.65,
+                0.52,
+                0.05,
+                "compressor_pressure",
+                "Compressor discharge pressure",
+                "reliability",
+                "compressor discharge pressure below norm",
+                suffix="MPa",
             ),
             self._high_is_bad(
                 telemetry.operating_hours_since_last_service_h,
@@ -313,7 +425,32 @@ class HealthIndexEngine:
                 "brake solenoid residual signal elevated",
                 suffix="mV",
             ),
+            self._high_is_bad(
+                telemetry.brake_cylinder_pressure_mpa,
+                0.15,
+                0.3,
+                0.06,
+                "brake_cylinder_pressure",
+                "Brake cylinder pressure",
+                "reliability",
+                "brake cylinder pressure above norm",
+                suffix="MPa",
+            ),
         ]
+
+        if telemetry.parking_brake_status and telemetry.speed_kmh > 1:
+            reliability_results.append(
+                RuleResult(
+                    0.12,
+                    HealthFactor(
+                        key="parking_brake",
+                        label="Parking brake status",
+                        category="reliability",
+                        penalty=12.0,
+                        detail="parking brake engaged while locomotive is moving",
+                    ),
+                )
+            )
 
         load_modifier = sum(result.penalty for result in load_results)
         health_modifier = sum(result.penalty for result in health_results)
@@ -387,6 +524,70 @@ class HealthIndexEngine:
             category=category,
             penalty=round(penalty * 100, 2),
             detail=f"{detail} -> {round(value, 2)} {suffix}",
+        )
+        return RuleResult(penalty, factor)
+
+    def _range_is_bad(
+        self,
+        value: float | None,
+        normal_min: float,
+        normal_max: float,
+        warn_min: float,
+        warn_max: float,
+        weight: float,
+        key: str,
+        label: str,
+        category: str,
+        detail: str,
+        suffix: str,
+    ) -> RuleResult:
+        if value is None:
+            return RuleResult(0.0, None)
+        if normal_min <= value <= normal_max:
+            return RuleResult(0.0, None)
+
+        if value < warn_min:
+            span = max(normal_min - warn_min, 0.0001)
+            normalized = 1 + clamp((normal_min - value) / span, 0.0, 1.8)
+        elif value > warn_max:
+            span = max(warn_max - normal_max, 0.0001)
+            normalized = 1 + clamp((value - normal_max) / span, 0.0, 1.8)
+        elif value < normal_min:
+            span = max(normal_min - warn_min, 0.0001)
+            normalized = clamp((normal_min - value) / span, 0.0, 1.0)
+        else:
+            span = max(warn_max - normal_max, 0.0001)
+            normalized = clamp((value - normal_max) / span, 0.0, 1.0)
+
+        penalty = weight * normalized
+        factor = HealthFactor(
+            key=key,
+            label=label,
+            category=category,
+            penalty=round(penalty * 100, 2),
+            detail=f"{detail} -> {round(value, 2)} {suffix}",
+        )
+        return RuleResult(penalty, factor)
+
+    def _categorical_penalty(
+        self,
+        value: str,
+        penalties: dict[str, tuple[float, str]],
+        key: str,
+        label: str,
+        category: str,
+        suffix: str,
+    ) -> RuleResult:
+        match = penalties.get(value)
+        if match is None:
+            return RuleResult(0.0, None)
+        penalty, detail = match
+        factor = HealthFactor(
+            key=key,
+            label=label,
+            category=category,
+            penalty=round(penalty * 100, 2),
+            detail=f"{detail} -> {value} {suffix}",
         )
         return RuleResult(penalty, factor)
 

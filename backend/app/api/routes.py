@@ -5,22 +5,21 @@ import json
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.auth import create_access_token, decode_token
 from app.core.metrics import MetricsRegistry
 from app.core.settings import settings
 from app.schemas.auth import LoginRequest, TokenResponse
+from app.schemas.analytics import AlertBreakdownRow, AlertTrendRow, BreakdownRow, FactorBreakdownRow, KpiRow, ReportingEventRow, TrendRow
 from app.schemas.health import HealthSnapshot
 from app.schemas.telemetry import EnrichedTelemetry, FleetCard, TelemetryEvent
 from app.services.alerts import AlertEngine
 from app.services.event_bus import EventBus
 from app.services.health_engine import HealthIndexEngine
+from app.services.telemetry_runtime import TelemetryRuntimeDependencies, process_telemetry_event
 from app.storage.database import Database
 
 
@@ -37,6 +36,13 @@ class AppContainer:
 
 
 container = AppContainer()
+runtime_dependencies = TelemetryRuntimeDependencies(
+    database=container.database,
+    bus=container.bus,
+    health_engine=container.health_engine,
+    alert_engine=container.alert_engine,
+    metrics=container.metrics,
+)
 router = APIRouter()
 
 
@@ -89,31 +95,7 @@ def metrics() -> PlainTextResponse:
 
 @router.post("/telemetry", response_model=EnrichedTelemetry)
 async def ingest_telemetry(payload: TelemetryEvent, _: Annotated[dict[str, Any], Depends(require_user)]) -> EnrichedTelemetry:
-    previous = container.database.latest_health(payload.locomotive_id)
-    if previous:
-        payload.metadata["delta_hours"] = max(
-            1 / 3600,
-            (payload.timestamp.astimezone(UTC) - previous.timestamp.astimezone(UTC)).total_seconds() / 3600,
-        )
-    health = container.health_engine.evaluate(payload, previous_health=previous.score if previous else None)
-    health.trend = container.database.trend(payload.locomotive_id, points=60) + [health.score]
-    alerts = container.alert_engine.evaluate(payload, health)
-    event_id = str(uuid4())
-
-    container.database.upsert_locomotive(payload)
-    container.database.save_event(event_id, payload, health, alerts)
-    container.metrics.increment("total_ingested")
-    if alerts:
-        container.metrics.increment("total_alerts", len(alerts))
-
-    event = EnrichedTelemetry(
-        event_id=event_id,
-        telemetry=payload,
-        health=health.model_dump(mode="json"),
-        alerts=[alert.model_dump(mode="json") for alert in alerts],
-    )
-    await container.bus.publish(_to_public_event(event))
-    return event
+    return await process_telemetry_event(payload, runtime_dependencies)
 
 
 @router.get("/locomotives", response_model=list[FleetCard])
@@ -168,6 +150,113 @@ def export_history(
     body = container.database.export_history(format_name, locomotive_id, from_ts, to_ts)
     media_type = "application/json" if format_name == "json" else "text/csv"
     return PlainTextResponse(body, media_type=media_type)
+
+
+@router.get("/analytics/kpis", response_model=list[KpiRow])
+def analytics_kpis(
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    locomotive_id: str | None = None,
+    from_ts: Annotated[datetime | None, Query(alias="from")] = None,
+    to_ts: Annotated[datetime | None, Query(alias="to")] = None,
+) -> list[KpiRow]:
+    return container.database.analytics_kpis(locomotive_id=locomotive_id, from_ts=from_ts, to_ts=to_ts)
+
+
+@router.get("/analytics/trends", response_model=list[TrendRow])
+def analytics_trends(
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    bucket: Literal["15min", "hour", "day"] = "hour",
+    locomotive_id: str | None = None,
+    from_ts: Annotated[datetime | None, Query(alias="from")] = None,
+    to_ts: Annotated[datetime | None, Query(alias="to")] = None,
+) -> list[TrendRow]:
+    return container.database.analytics_trends(
+        bucket=bucket,
+        locomotive_id=locomotive_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+    )
+
+
+@router.get("/analytics/breakdown", response_model=list[BreakdownRow])
+def analytics_breakdown(
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    dimension: Literal[
+        "health_grade",
+        "health_band",
+        "locomotive_type",
+        "rail_surface_state",
+        "top_factor_category",
+        "top_factor_label",
+    ] = "health_grade",
+    locomotive_id: str | None = None,
+    from_ts: Annotated[datetime | None, Query(alias="from")] = None,
+    to_ts: Annotated[datetime | None, Query(alias="to")] = None,
+) -> list[BreakdownRow]:
+    return container.database.analytics_breakdown(
+        dimension=dimension,
+        locomotive_id=locomotive_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+    )
+
+
+@router.get("/analytics/factors", response_model=list[FactorBreakdownRow])
+def analytics_factors(
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    locomotive_id: str | None = None,
+    from_ts: Annotated[datetime | None, Query(alias="from")] = None,
+    to_ts: Annotated[datetime | None, Query(alias="to")] = None,
+) -> list[FactorBreakdownRow]:
+    return container.database.analytics_factor_breakdown(locomotive_id=locomotive_id, from_ts=from_ts, to_ts=to_ts)
+
+
+@router.get("/analytics/alerts/trends", response_model=list[AlertTrendRow])
+def analytics_alert_trends(
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    bucket: Literal["15min", "hour", "day"] = "hour",
+    locomotive_id: str | None = None,
+    from_ts: Annotated[datetime | None, Query(alias="from")] = None,
+    to_ts: Annotated[datetime | None, Query(alias="to")] = None,
+) -> list[AlertTrendRow]:
+    return container.database.analytics_alert_trends(
+        bucket=bucket,
+        locomotive_id=locomotive_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+    )
+
+
+@router.get("/analytics/alerts/breakdown", response_model=list[AlertBreakdownRow])
+def analytics_alert_breakdown(
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    dimension: Literal["source", "severity", "code", "status"] = "source",
+    locomotive_id: str | None = None,
+    from_ts: Annotated[datetime | None, Query(alias="from")] = None,
+    to_ts: Annotated[datetime | None, Query(alias="to")] = None,
+) -> list[AlertBreakdownRow]:
+    return container.database.analytics_alert_breakdown(
+        dimension=dimension,
+        locomotive_id=locomotive_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+    )
+
+
+@router.get("/analytics/events", response_model=list[ReportingEventRow])
+def analytics_events(
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    locomotive_id: str | None = None,
+    from_ts: Annotated[datetime | None, Query(alias="from")] = None,
+    to_ts: Annotated[datetime | None, Query(alias="to")] = None,
+    limit: int = 5000,
+) -> list[ReportingEventRow]:
+    return container.database.analytics_reporting_rows(
+        locomotive_id=locomotive_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        limit=min(limit, 10000),
+    )
 
 
 async def sse_stream(request: Request) -> AsyncGenerator[bytes, None]:

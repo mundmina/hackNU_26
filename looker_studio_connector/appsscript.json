@@ -1,0 +1,17 @@
+{
+  "timeZone": "Asia/Almaty",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/script.external_request"
+  ],
+  "dataStudio": {
+    "name": "Locomotive Digital Twin Connector",
+    "company": "mundmina",
+    "logoUrl": "https://www.gstatic.com/images/branding/product/2x/looker_studio_96dp.png",
+    "addonUrl": "https://github.com/mundmina/hackNU_26",
+    "supportUrl": "https://github.com/mundmina/hackNU_26/issues",
+    "description": "Connects the locomotive digital twin backend to Looker Studio with KPI, trend, breakdown, factor, alert, and event datasets."
+  }
+}

@@ -1,9 +1,9 @@
 # Locomotive Digital Twin Prototype
 
-This repository implements the `plan_v2.pdf` brief as a full-stack MVP for a KTZ locomotive digital twin. It includes:
+This repository implements the locomotive digital twin brief as a full-stack MVP for a KTZ operator console. The current version also applies the threshold tables from the uploaded `metrics.pdf`, adds a machinist-style cockpit UI, and can auto-publish demo telemetry from the backend every 15 seconds by default so the frontend can act as a live display only.
 
 - `backend/`: FastAPI API for telemetry ingest, Health Index scoring, alerts, history/export, auth, `/health`, `/metrics`, WebSocket streaming, and SSE fallback.
-- `frontend/`: React + Vite dashboard with a health gauge, live charts, 3D locomotive twin, route map, alert feed, replay controls, and fleet overview.
+- `frontend/`: React + Vite operator console with a machinist-inspired metallic cockpit layout, a 3D locomotive twin, subsystem health, route/status panels, and live alert readouts.
 - `simulator/`: Python telemetry generator with normal, degraded, and spike-mode runs.
 - `docker-compose.yml`: single-command stack scaffold with backend, frontend, PostgreSQL, and Redis.
 
@@ -12,11 +12,14 @@ This repository implements the `plan_v2.pdf` brief as a full-stack MVP for a KTZ
 - Real-time ingest: `POST /telemetry`
 - Authentication: `POST /auth/login`
 - Live streams: `GET /stream?token=...` and `WS /ws?token=...`
-- Health Index engine: formula-inspired score, grade bands `A-E`, top factor breakdown, and trend history
-- Alerting: wheel slip, thermal, brake, reliability, and low-HI alerts persisted with the event stream
+- Backend autopilot: emits demo telemetry every 15 seconds by default so the frontend can simply listen and render
+- Health Index engine: score bands `A-E`, top factor breakdown, trend history, and PDF-driven thresholds for traction, voltage, thermal, brake, vibration, service, and reliability metrics
+- Alerting: wheel slip, thermal, voltage, brake, vibration, reliability, and low-HI alerts persisted with the event stream
 - History and export: `GET /telemetry`, `GET /alerts`, `GET /export?format=csv|json`
+- BI/reporting layer: `GET /analytics/kpis`, `/analytics/trends`, `/analytics/breakdown`, `/analytics/factors`, `/analytics/alerts/trends`, `/analytics/alerts/breakdown`, `/analytics/events`
 - Operations endpoints: `GET /health`, `GET /metrics`
 - Frontend modules from the spec: health gauge, 3D twin, traction chart, subsystem monitoring, alert feed, route map, history/replay, fleet overview
+- Looker Studio integration scaffold: Apps Script community connector in `looker_studio_connector/` and dashboard design guide in `docs/looker-studio-dashboard.md`
 
 ## Repo layout
 
@@ -33,6 +36,8 @@ backend/
 frontend/
   src/
 simulator/
+looker_studio_connector/
+docs/
 ```
 
 ## Local run
@@ -55,6 +60,13 @@ uvicorn app.main:app --reload
 ```
 
 The backend defaults to a local SQLite database under `backend/data/` for portability in this sandboxed workspace, while `backend/sql/init.sql` provides the PostgreSQL schema requested by the plan.
+
+By default the backend also starts a demo autopilot and emits fresh telemetry every 15 seconds. You can tune or disable that with:
+
+```bash
+ENABLE_DEMO_AUTOPILOT=true
+AUTOPILOT_INTERVAL_SECONDS=15
+```
 
 ### Frontend
 
@@ -98,6 +110,8 @@ Run a burst demo:
 python3 simulator/simulate.py --locomotive-id KZ8A-001 --spike-mode
 ```
 
+You can use the simulator in addition to the backend autopilot, but it is no longer required just to make the frontend look live.
+
 ## Docker Compose
 
 When Docker is available:
@@ -117,6 +131,22 @@ The compose file provisions:
 
 - Backend syntax can be checked with `python3 -m compileall backend simulator`
 - Health Index tests can be run with `PYTHONPATH=backend python3 -m unittest backend/tests/test_health_engine.py`
+- Analytics/reporting tests can be run with `PYTHONPATH=backend python3 -m unittest backend/tests/test_analytics_reporting.py`
+
+## Looker Studio
+
+This repo now includes a reporting-oriented backend layer plus a Google Apps Script community connector scaffold:
+
+- Connector code: `looker_studio_connector/Code.js`
+- Apps Script manifest: `looker_studio_connector/appsscript.json`
+- Dashboard setup guide: `docs/looker-studio-dashboard.md`
+
+The recommended path is:
+
+1. Run the backend and simulator.
+2. Deploy the Apps Script connector.
+3. Connect Looker Studio to one of the analytics datasets.
+4. Build scorecards, trends, breakdowns, and alert analysis pages using the guide.
 
 ## Notes
 

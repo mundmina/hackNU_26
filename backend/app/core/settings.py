@@ -21,9 +21,13 @@ class Settings:
     jwt_secret: str = field(default_factory=lambda: os.getenv("JWT_SECRET", "change-me-in-production"))
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = field(default_factory=lambda: int(os.getenv("ACCESS_TOKEN_MINUTES", "720")))
-    stale_after_seconds: int = field(default_factory=lambda: int(os.getenv("STALE_AFTER_SECONDS", "10")))
+    stale_after_seconds: int = field(default_factory=lambda: int(os.getenv("STALE_AFTER_SECONDS", "45")))
     max_stream_queue: int = field(default_factory=lambda: int(os.getenv("MAX_STREAM_QUEUE", "128")))
     telemetry_buffer_size: int = field(default_factory=lambda: int(os.getenv("TELEMETRY_BUFFER_SIZE", "2048")))
+    enable_demo_autopilot: bool = field(
+        default_factory=lambda: os.getenv("ENABLE_DEMO_AUTOPILOT", "true").lower() in {"1", "true", "yes", "on"}
+    )
+    autopilot_interval_seconds: int = field(default_factory=lambda: int(os.getenv("AUTOPILOT_INTERVAL_SECONDS", "15")))
     demo_users: dict[str, dict[str, str]] = field(
         default_factory=lambda: json.loads(
             os.getenv(
