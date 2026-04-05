@@ -3,3 +3,6 @@ uvicorn[standard]>=0.35,<1.0
 pydantic>=2.7,<3.0
 PyJWT>=2.9,<3.0
 python-multipart>=0.0.9,<1.0
+# Redis pub/sub event bus (plan §5.3 highload resistance — x10 spike buffer).
+# The app starts without Redis and falls back to in-memory queues automatically.
+redis[asyncio]>=5.0,<6.0

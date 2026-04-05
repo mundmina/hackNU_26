@@ -10,8 +10,8 @@ export function FleetOverview({ fleet, selectedLocomotiveId, onSelect }: FleetOv
   return (
     <section className="panel fleet-panel">
       <div className="panel-header">
-        <p>Fleet Overview</p>
-        <span className="muted">{fleet.length} locomotives</span>
+        <p>Обзор парка</p>
+        <span className="muted">{fleet.length} локомотивов</span>
       </div>
       <div className="fleet-grid">
         {fleet.map((card) => (
@@ -26,7 +26,7 @@ export function FleetOverview({ fleet, selectedLocomotiveId, onSelect }: FleetOv
               <span>{card.health_score.toFixed(1)}</span>
               <small>{card.health_grade}</small>
             </div>
-            <small>{card.alert_count} alerts</small>
+            <small>{card.alert_count} тревог</small>
           </button>
         ))}
       </div>

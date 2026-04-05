@@ -14,9 +14,9 @@ export function ReplayPanel({ history, replayIndex, onReplayIndexChange, onPlay,
   return (
     <section className="panel replay-panel">
       <div className="panel-header">
-        <p>History & Replay</p>
+        <p>История и воспроизведение</p>
         <button className="ghost-button" onClick={onPlay}>
-          {playing ? "Pause" : "Play"}
+          {playing ? "Пауза" : "Воспроизвести"}
         </button>
       </div>
       <input
@@ -27,8 +27,8 @@ export function ReplayPanel({ history, replayIndex, onReplayIndexChange, onPlay,
         onChange={(event) => onReplayIndexChange(Number(event.target.value))}
       />
       <div className="replay-meta">
-        <span>{current ? new Date(current.telemetry.timestamp).toLocaleString() : "No history yet"}</span>
-        <span>{current ? `${current.health.score.toFixed(1)} / ${current.health.grade}` : "Awaiting replay data"}</span>
+        <span>{current ? new Date(current.telemetry.timestamp).toLocaleString("ru-RU") : "История пока отсутствует"}</span>
+        <span>{current ? `${current.health.score.toFixed(1)} / ${current.health.grade}` : "Ожидание данных для воспроизведения"}</span>
       </div>
     </section>
   );

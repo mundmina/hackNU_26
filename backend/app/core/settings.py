@@ -9,7 +9,7 @@ from pathlib import Path
 @dataclass(slots=True)
 class Settings:
     app_name: str = "Locomotive Digital Twin API"
-    api_prefix: str = ""
+    api_prefix: str = field(default_factory=lambda: os.getenv("API_PREFIX", "/api"))
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173"])
     database_url: str = field(
         default_factory=lambda: os.getenv(

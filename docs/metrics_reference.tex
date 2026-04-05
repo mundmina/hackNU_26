@@ -1,0 +1,159 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{russian}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\geometry{left=2cm, right=2cm, top=2.2cm, bottom=2.2cm}
+
+\definecolor{norm}{HTML}{D6F5D6}
+\definecolor{warn}{HTML}{FFF3CD}
+\definecolor{crit}{HTML}{FDDEDE}
+\definecolor{headerbg}{HTML}{2C3E50}
+\definecolor{headertext}{HTML}{FFFFFF}
+\definecolor{sectionline}{HTML}{2C3E50}
+
+\titleformat{\section}{\large\bfseries\color{sectionline}}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{14pt}{6pt}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\newcommand{\metricsheader}{%
+  \rowcolor{headerbg}
+  \color{headertext}\textbf{Метрика} &
+  \color{headertext}\textbf{Ед.} &
+  \color{headertext}\textbf{Норма} &
+  \color{headertext}\textbf{Внимание} &
+  \color{headertext}\textbf{Критично} \\
+}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE\bfseries Метрики локомотива — Справочник}\\[4pt]
+  {\small Диапазоны по модулю \texttt{health\_engine.py} | Locomotive Digital Twin v2}
+\end{center}
+
+\vspace{4pt}
+\noindent\textit{Таблицы охватывают все параметры, кроме базовых (скорость, топливо, давление).
+Каждый параметр влияет на \textbf{Health Index} (0–100, оценки A–E) через
+соответствующий модификатор $M_{Ld}$, $M_H$ или $M_R$.}
+
+\section{Тяга и движение}
+\begin{tabularx}{\textwidth}{L{5.0cm} C{1.2cm} L{2.8cm} L{3.0cm} L{3.0cm}}
+\toprule
+\metricsheader
+\midrule
+\rowcolor{norm} Ускорение / торможение       & м/с² & $|a| \leq 1{,}0$ & $1{,}0 - 2{,}0$   & $> 2{,}0$  \\
+\rowcolor{norm} Тяговое усилие               & кН   & $\leq 250$        & $250 - 400$        & $> 400$    \\
+\rowcolor{norm} Коэффициент боксования       & \%   & $\leq 2{,}5$      & $2{,}5 - 6{,}0$    & $> 6{,}0$  \\
+\rowcolor{norm} Коэффициент сцепления $\mu$  & —    & $\geq 0{,}18$     & $0{,}10 - 0{,}18$  & $< 0{,}10$ \\
+\rowcolor{norm} Ток тягового двигателя       & А    & $\leq 900$        & $900 - 1300$       & $> 1300$   \\
+\rowcolor{norm} Момент тягового двигателя    & Н·м  & $\leq 3000$       & $3000 - 4500$      & $> 4500$   \\
+\bottomrule
+\end{tabularx}
+
+\section{Электроснабжение и ресурсы}
+\begin{tabularx}{\textwidth}{L{5.8cm} C{1.2cm} L{2.8cm} L{2.8cm} L{2.4cm}}
+\toprule
+\metricsheader
+\midrule
+\rowcolor{norm} Напряжение контактного провода \textit{(KZ8A)} & кВ  & $20 - 28$     & $19 - 20$ или $28 - 28{,}5$ & $< 19$ или $> 28{,}5$ \\
+\rowcolor{norm} Напряжение тяговой цепи                        & В   & $2400 - 3200$ & $1800 - 2400$               & $< 1800$ \\
+\rowcolor{norm} Потребление эл. энергии \textit{(KZ8A)}        & кВт & $\leq 5000$   & $5000 - 7000$               & $> 7000$ \\
+\rowcolor{norm} Напряжение аккумулятора                        & В   & $\geq 100$    & $92 - 100$                  & $< 92$   \\
+\rowcolor{norm} Нагрузка вспомогательного оборуд.             & кВт & $\leq 120$    & $120 - 180$                 & $> 180$  \\
+\bottomrule
+\end{tabularx}
+
+\section{Тепловое и механическое состояние}
+\begin{tabularx}{\textwidth}{L{6.0cm} C{1.2cm} L{2.4cm} L{2.6cm} L{2.2cm}}
+\toprule
+\metricsheader
+\midrule
+\rowcolor{norm} Температура моторного масла              & °C     & $\leq 100$      & $100 - 118$           & $> 118$   \\
+\rowcolor{norm} Температура охлаждающей жидкости         & °C     & $\leq 88$       & $88 - 102$            & $> 102$   \\
+\rowcolor{norm} Давление моторного масла                 & МПа    & $\geq 0{,}35$   & $0{,}22 - 0{,}35$     & $< 0{,}22$ \\
+\rowcolor{norm} Температура выхлопных газов              & °C     & $\leq 580$      & $580 - 670$           & $> 670$   \\
+\rowcolor{norm} Обороты турбокомпрессора                 & об/мин & $\leq 62{.}000$ & $62{.}000 - 78{.}000$ & $> 78{.}000$ \\
+\rowcolor{norm} Давление на выходе компрессора           & МПа    & $\geq 0{,}65$   & $0{,}52 - 0{,}65$     & $< 0{,}52$ \\
+\rowcolor{norm} Температура обмотки тягового двигателя   & °C     & $\leq 120$      & $120 - 160$           & $> 160$   \\
+\rowcolor{norm} Температура масла трансформатора \textit{(KZ8A)} & °C & $\leq 70$  & $70 - 95$             & $> 95$    \\
+\rowcolor{norm} Вибрация колёсной пары                   & мм/с   & $\leq 12$       & $12 - 28$             & $> 28$    \\
+\rowcolor{norm} Температура окружающей среды             & °C     & $\leq 38$       & $38 - 48$             & $> 48$    \\
+\bottomrule
+\end{tabularx}
+
+\section{Тормозная система}
+\begin{tabularx}{\textwidth}{L{6.0cm} C{1.2cm} L{2.4cm} L{2.6cm} L{2.4cm}}
+\toprule
+\metricsheader
+\midrule
+\rowcolor{norm} Давление в главном резервуаре          & МПа & $\geq 0{,}72$ & $0{,}60 - 0{,}72$ & $< 0{,}60$ \\
+\rowcolor{norm} Давление в тормозном цилиндре          & МПа & $0 - 0{,}15$  & $0{,}15 - 0{,}30$ & $> 0{,}30$ \\
+\rowcolor{norm} Остаток тормозных колодок              & \%  & $\geq 35$     & $20 - 35$         & $< 20$     \\
+\rowcolor{norm} Сигнал соленоидного клапана            & мВ  & $\leq 180$    & $180 - 320$       & $> 320$    \\
+\rowcolor{norm} Стояночный тормоз                      & —   & выключен      & —                 & включён при движении \\
+\bottomrule
+\end{tabularx}
+
+\section{Надёжность и KPI}
+\begin{tabularx}{\textwidth}{L{6.4cm} C{1.2cm} L{2.4cm} L{2.4cm} L{2.0cm}}
+\toprule
+\metricsheader
+\midrule
+\rowcolor{norm} Активные коды ошибок ЭБУ              & шт.   & $0$          & $1 - 4$         & $> 4$     \\
+\rowcolor{norm} Частота кодов ошибок                  & соб/ч & $\leq 1{,}0$ & $1{,}0 - 3{,}5$ & $> 3{,}5$ \\
+\rowcolor{norm} Наработка с последнего ТО             & ч     & $\leq 1200$  & $1200 - 2200$   & $> 2200$  \\
+\rowcolor{norm} MTBF — ср. время между отказами       & ч     & $\geq 1800$  & $1200 - 1800$   & $< 1200$  \\
+\rowcolor{norm} MTTR — ср. время восстановления       & ч     & $\leq 8$     & $8 - 16$        & $> 16$    \\
+\rowcolor{norm} Доступность локомотива                & \%    & $\geq 92$    & $80 - 92$       & $< 80$    \\
+\rowcolor{norm} Пробег с последнего капремонта        & км    & $\leq 40000$ & $40000 - 90000$ & $> 90000$ \\
+\bottomrule
+\end{tabularx}
+
+\section{Инфраструктура и маршрут}
+\begin{tabularx}{\textwidth}{L{6.0cm} C{1.2cm} L{2.4cm} L{2.4cm} L{2.4cm}}
+\toprule
+\metricsheader
+\midrule
+\rowcolor{norm} Уклон пути                           & ‰  & $|g| \leq 4$  & $4 - 10$        & $> 10$    \\
+\rowcolor{norm} Коэф. вертикальной динамики          & —  & $\leq 0{,}8$  & $0{,}8 - 1{,}2$ & $> 1{,}2$ \\
+\rowcolor{norm} Усилие на раму                       & кН & $\leq 220$    & $220 - 340$     & $> 340$   \\
+\rowcolor{norm} Состояние рельсовой поверхности      & —  & чистый        & мокрый          & маслянистый \\
+\bottomrule
+\end{tabularx}
+
+\vspace{16pt}
+\noindent\colorbox{headerbg}{\color{white}\textbf{\quad Итоговая оценка — Health Index (0–100)\quad}}
+
+\vspace{6pt}
+\begin{tabularx}{\textwidth}{C{1.8cm} C{2.2cm} L{9cm}}
+\toprule
+\rowcolor{headerbg}
+\color{white}\textbf{Оценка} &
+\color{white}\textbf{Диапазон} &
+\color{white}\textbf{Действие} \\
+\midrule
+\rowcolor{norm} \textbf{A} & 85–100 & Норма — никаких действий не требуется \\
+\rowcolor{norm} \textbf{B} & 70–84  & Наблюдение — запланировать техосмотр \\
+\rowcolor{warn} \textbf{C} & 50–69  & Предупреждение — приоритетное обслуживание \\
+\rowcolor{crit} \textbf{D} & 30–49  & Ограничить эксплуатацию \\
+\rowcolor{crit} \textbf{E} & 0–29   & Критично — немедленное вмешательство \\
+\bottomrule
+\end{tabularx}
+
+\end{document}

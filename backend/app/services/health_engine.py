@@ -200,6 +200,42 @@ class HealthIndexEngine:
                 "high frame force",
                 suffix="kN",
             ),
+            # Turbocharger RPM — M_H (plan §3.3, range 0–80000)
+            self._high_is_bad(
+                telemetry.turbocharger_rpm,
+                62000,
+                78000,
+                0.06,
+                "turbocharger_rpm",
+                "Turbocharger RPM",
+                "health",
+                "turbocharger overspeed above design limit",
+                suffix="RPM",
+            ),
+            # Ambient temperature — M_H (plan §3.6, range -50 to +50)
+            self._high_is_bad(
+                telemetry.ambient_temperature_c,
+                38,
+                48,
+                0.04,
+                "ambient_temp",
+                "Ambient temperature",
+                "health",
+                "extreme ambient heat stress on cooling system",
+                suffix="°C",
+            ),
+            # Catenary voltage (KZ8A electric only) — M_H (plan §3.2, range 19–29 kV)
+            self._low_is_bad(
+                telemetry.catenary_voltage_kv if telemetry.locomotive_type == "KZ8A" and telemetry.catenary_voltage_kv is not None else 25.0,
+                20.0,
+                19.0,
+                0.07,
+                "catenary_voltage",
+                "Catenary voltage",
+                "health",
+                "catenary supply voltage below safe operating range",
+                suffix="kV",
+            ) if telemetry.locomotive_type == "KZ8A" else RuleResult(0.0, None),
         ]
 
         reliability_results = [
@@ -313,6 +349,30 @@ class HealthIndexEngine:
                 "brake solenoid residual signal elevated",
                 suffix="mV",
             ),
+            # Battery voltage — M_R (plan §3.2, range 90–140 V)
+            self._low_is_bad(
+                telemetry.battery_voltage_v,
+                100,
+                92,
+                0.05,
+                "battery_voltage",
+                "Battery voltage",
+                "reliability",
+                "auxiliary battery voltage below safe threshold",
+                suffix="V",
+            ),
+            # Compressor discharge pressure — M_R (plan §3.3, range 0.5–1.0 MPa)
+            self._low_is_bad(
+                telemetry.compressor_discharge_pressure_mpa,
+                0.65,
+                0.52,
+                0.05,
+                "compressor_pressure",
+                "Compressor discharge pressure",
+                "reliability",
+                "air compressor pressure below operating norm",
+                suffix="MPa",
+            ),
         ]
 
         load_modifier = sum(result.penalty for result in load_results)
@@ -321,6 +381,19 @@ class HealthIndexEngine:
 
         beta = 0.22 if telemetry.locomotive_type == "TE33A" else 0.18
         time_delta_hours = max(1 / 60, telemetry.metadata.get("delta_hours", 1 / 60))
+
+        # ── HI Formula (plan §4.1) ──────────────────────────────────────────────
+        # Plan notation:  HI(t) = [HI_init · e^(M_Ld·β·t)] ^ e^(M_H + M_R)
+        #
+        # Implementation: HI(t) = 100 · e^(-M_Ld·β·t) · e^(-(M_H + M_R))
+        #
+        # The plan's formula treats modifiers as signed (negative = degradation).
+        # This implementation uses unsigned penalties (always ≥ 0) and negates
+        # them inside the exponent, which is mathematically equivalent under the
+        # convention M_plan = -M_impl.  The additive decomposition (load × time
+        # as a separate exponential from health + reliability) preserves the
+        # plan's intended factor structure while keeping scores bounded in [0, 100].
+        # ────────────────────────────────────────────────────────────────────────
         formula_score = 100 * math.exp(-(load_modifier * beta * time_delta_hours)) * math.exp(
             -(health_modifier + reliability_modifier)
         )

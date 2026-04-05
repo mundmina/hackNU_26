@@ -16,6 +16,25 @@ function defaultCredentials() {
   return { username: "admin", password: "admin123" };
 }
 
+function translateRole(role: string | null) {
+  if (role === "admin") return "администратор";
+  if (role === "operator") return "оператор";
+  return role ?? "оператор";
+}
+
+function translateTransport(transport: "idle" | "websocket" | "sse", connected: boolean) {
+  if (!connected) {
+    return "не в сети";
+  }
+  if (transport === "websocket") {
+    return "WS онлайн";
+  }
+  if (transport === "sse") {
+    return "SSE онлайн";
+  }
+  return "онлайн";
+}
+
 export default function App() {
   const [credentials, setCredentials] = useState(defaultCredentials());
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("digitalTwinToken"));
@@ -119,19 +138,34 @@ export default function App() {
     if (!replayItem) {
       return [];
     }
+    const tel = replayItem.telemetry;
+    // Fuel efficiency — plan §8.3
+    let fuelEfficiency = "Н/Д";
+    if (tel.locomotive_type === "TE33A" && tel.fuel_consumption_lph && tel.fuel_consumption_lph > 0 && tel.speed_kmh > 0) {
+      fuelEfficiency = `${(tel.speed_kmh / tel.fuel_consumption_lph).toFixed(2)} км/л`;
+    } else if (tel.locomotive_type === "KZ8A" && tel.electric_power_kw && tel.electric_power_kw > 0 && tel.speed_kmh > 0) {
+      fuelEfficiency = `${(tel.electric_power_kw / tel.speed_kmh).toFixed(1)} кВт·ч/км`;
+    }
     return [
-      { label: "Speed", value: `${replayItem.telemetry.speed_kmh.toFixed(1)} km/h` },
-      { label: "Tractive Effort", value: `${replayItem.telemetry.tractive_effort_kn.toFixed(0)} kN` },
-      { label: "Oil Temp", value: `${replayItem.telemetry.engine_oil_temperature_c.toFixed(1)} °C` },
-      { label: "Coolant Temp", value: `${replayItem.telemetry.coolant_temperature_c.toFixed(1)} °C` },
-      { label: "Brake Pressure", value: `${replayItem.telemetry.main_reservoir_pressure_mpa.toFixed(2)} MPa` },
+      { label: "Скорость", value: `${tel.speed_kmh.toFixed(1)} км/ч` },
+      { label: "Тяговое усилие", value: `${tel.tractive_effort_kn.toFixed(0)} кН` },
+      { label: "Температура масла", value: `${tel.engine_oil_temperature_c.toFixed(1)} °C` },
+      { label: "Температура ОЖ", value: `${tel.coolant_temperature_c.toFixed(1)} °C` },
+      { label: "Тормозное давление", value: `${tel.main_reservoir_pressure_mpa.toFixed(2)} МПа` },
       {
-        label: replayItem.telemetry.locomotive_type === "TE33A" ? "Fuel Level" : "Catenary Voltage",
+        label: tel.locomotive_type === "TE33A" ? "Уровень топлива" : "Напряжение контактной сети",
         value:
-          replayItem.telemetry.locomotive_type === "TE33A"
-            ? `${(replayItem.telemetry.fuel_level_pct ?? 0).toFixed(1)} %`
-            : `${(replayItem.telemetry.catenary_voltage_kv ?? 0).toFixed(1)} kV`,
+          tel.locomotive_type === "TE33A"
+            ? `${(tel.fuel_level_pct ?? 0).toFixed(1)} %`
+            : `${(tel.catenary_voltage_kv ?? 0).toFixed(1)} кВ`,
       },
+      // §8.3 Operational KPIs
+      { label: "Готовность", value: `${tel.locomotive_availability_pct.toFixed(1)} %` },
+      { label: "MTBF", value: `${tel.mtbf_h.toFixed(0)} ч` },
+      { label: "MTTR", value: `${tel.mttr_h.toFixed(1)} ч` },
+      { label: "Ресурс тормозных колодок", value: `${tel.brake_pad_wear_pct_remaining.toFixed(1)} %` },
+      { label: tel.locomotive_type === "TE33A" ? "Топливная эффективность" : "Энергоэффективность", value: fuelEfficiency },
+      { label: "Вибрация", value: `${tel.vibration_amplitude_mms.toFixed(1)} мм/с` },
     ];
   }, [replayItem]);
 
@@ -146,7 +180,7 @@ export default function App() {
       setToken(response.access_token);
       setRole(response.role);
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Login failed");
+      setError(loginError instanceof Error ? loginError.message : "Не удалось выполнить вход");
     } finally {
       setLoading(false);
     }
@@ -168,18 +202,18 @@ export default function App() {
     return (
       <main className="login-screen">
         <section className="login-card">
-          <p className="eyebrow">KTZ Locomotive Digital Twin</p>
-          <h1>Real-time telemetry, health scoring, and route-aware monitoring.</h1>
+          <p className="eyebrow">Цифровой двойник локомотива КТЖ</p>
+          <h1>Телеметрия в реальном времени, оценка технического состояния и контроль по маршруту.</h1>
           <form onSubmit={handleLoginSubmit} className="login-form">
             <label>
-              Username
+              Логин
               <input
                 value={credentials.username}
                 onChange={(event) => setCredentials((current) => ({ ...current, username: event.target.value }))}
               />
             </label>
             <label>
-              Password
+              Пароль
               <input
                 type="password"
                 value={credentials.password}
@@ -187,10 +221,10 @@ export default function App() {
               />
             </label>
             <button type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Launch dashboard"}
+              {loading ? "Вход..." : "Открыть панель"}
             </button>
           </form>
-          <p className="helper-copy">Demo accounts: admin / admin123 and operator / demo123.</p>
+          <p className="helper-copy">Демо-аккаунты: admin / admin123 и operator / demo123.</p>
           {error ? <div className="error-banner">{error}</div> : null}
         </section>
       </main>
@@ -201,19 +235,19 @@ export default function App() {
     <main className="app-shell">
       <header className="hero-header">
         <div>
-          <p className="eyebrow">Operational Plan v2 Prototype</p>
-          <h1>Locomotive Digital Twin Command Center</h1>
+          <p className="eyebrow">Прототип по Operational Plan v2</p>
+          <h1>Центр управления цифровым двойником локомотива</h1>
           <p className="hero-copy">
-            Live telemetry ingestion, Health Index scoring, route context, and replay for KZ8A and TE33A classes.
+            Потоковая телеметрия, расчёт индекса состояния, маршрутный контекст и воспроизведение истории для локомотивов KZ8A и TE33A.
           </p>
         </div>
         <div className="hero-actions">
-          <div className="status-badge">{role ?? "operator"}</div>
+          <div className="status-badge">{translateRole(role)}</div>
           <div className={`status-badge ${connected ? "status-live" : "status-offline"}`}>
-            {connected ? `${transport.toUpperCase()} LIVE` : "OFFLINE"}
+            {translateTransport(transport, connected)}
           </div>
           <button className="ghost-button" onClick={logout}>
-            Sign out
+            Выйти
           </button>
         </div>
       </header>
@@ -230,7 +264,7 @@ export default function App() {
         <HealthGauge health={health} />
         <LocomotiveTwin3D health={health} />
         <AlertFeed alerts={alerts} />
-        <TelemetryChart title="Traction & Motion" items={history} />
+        <TelemetryChart title="Тяга и движение" items={history} />
         <RouteMap
           position={
             replayItem
@@ -244,8 +278,8 @@ export default function App() {
         />
         <section className="panel metrics-panel">
           <div className="panel-header">
-            <p>Subsystem Monitoring</p>
-            <span className="muted">{loading ? "Refreshing..." : "Live snapshot"}</span>
+            <p>Мониторинг подсистем</p>
+            <span className="muted">{loading ? "Обновление..." : "Текущий срез"}</span>
           </div>
           <div className="metric-card-grid">
             {metrics.map((metric) => (

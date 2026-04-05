@@ -59,7 +59,7 @@ export function useTelemetryStream(token: string | null, onEvent: (event: Enrich
       }
       setTransport("websocket");
       const url = new URL(apiBase().replace(/^http/, "ws"));
-      url.pathname = "/ws";
+      url.pathname = "/api/ws";
       url.searchParams.set("token", token);
       ws = new WebSocket(url.toString());
       ws.onopen = () => {

@@ -5,7 +5,7 @@ import io
 import json
 import sqlite3
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -62,7 +62,8 @@ class Database:
                     message TEXT NOT NULL,
                     status TEXT NOT NULL,
                     source TEXT NOT NULL,
-                    details_json TEXT NOT NULL
+                    details_json TEXT NOT NULL,
+                    recommendation TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_alerts_locomotive_time
@@ -116,8 +117,9 @@ class Database:
                 connection.execute(
                     """
                     INSERT INTO alerts (
-                        alert_id, locomotive_id, timestamp, severity, code, message, status, source, details_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        alert_id, locomotive_id, timestamp, severity, code, message,
+                        status, source, details_json, recommendation
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         alert.alert_id,
@@ -129,6 +131,7 @@ class Database:
                         alert.status,
                         alert.source,
                         json.dumps(alert.details),
+                        alert.recommendation,
                     ),
                 )
 
@@ -201,6 +204,7 @@ class Database:
         locomotive_id: str | None = None,
         limit: int = 100,
         event_time: datetime | None = None,
+        since: str | None = None,
     ) -> list[Alert]:
         clauses = ["1=1"]
         params: list[Any] = []
@@ -210,6 +214,9 @@ class Database:
         if event_time:
             clauses.append("timestamp <= ?")
             params.append(event_time.astimezone(UTC).isoformat())
+        if since:
+            clauses.append("timestamp >= ?")
+            params.append(since)
         params.append(limit)
         with self._connect() as connection:
             rows = connection.execute(
@@ -233,6 +240,7 @@ class Database:
                 status=row["status"],
                 source=row["source"],
                 details=json.loads(row["details_json"]),
+                recommendation=row["recommendation"] if "recommendation" in row.keys() else "",
             )
             for row in rows
         ]
@@ -253,8 +261,11 @@ class Database:
                 ORDER BY te.locomotive_id
                 """
             ).fetchall()
+        # Count only alerts from the last 24 h — prevents all-time totals from
+        # inflating the card counter and causing slow full-table scans over time.
+        since_24h = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
         alert_counts = defaultdict(int)
-        for alert in self.alerts(limit=500):
+        for alert in self.alerts(limit=1000, since=since_24h):
             alert_counts[alert.locomotive_id] += 1
 
         cards: list[FleetCard] = []
@@ -295,39 +306,45 @@ class Database:
 
         buffer = io.StringIO()
         writer = csv.writer(buffer)
-        writer.writerow(
-            [
-                "event_id",
-                "locomotive_id",
-                "timestamp",
-                "locomotive_type",
-                "health_score",
-                "health_grade",
-                "speed_kmh",
-                "tractive_effort_kn",
-                "wheel_slip_ratio_pct",
-                "engine_oil_temperature_c",
-                "coolant_temperature_c",
-                "main_reservoir_pressure_mpa",
-            ]
-        )
+
+        telemetry_fields = [
+            "speed_kmh", "acceleration_mps2", "tractive_effort_kn",
+            "wheel_slip_ratio_pct", "adhesion_coefficient",
+            "traction_motor_current_a", "traction_motor_torque_nm",
+            "fuel_level_pct", "fuel_consumption_lph",
+            "catenary_voltage_kv", "traction_circuit_voltage_v",
+            "electric_power_kw", "battery_voltage_v", "auxiliary_power_load_kw",
+            "engine_oil_temperature_c", "coolant_temperature_c",
+            "engine_oil_pressure_mpa", "exhaust_gas_temperature_c",
+            "turbocharger_rpm", "compressor_discharge_pressure_mpa",
+            "traction_motor_winding_temp_c", "transformer_oil_temp_c",
+            "vibration_amplitude_mms", "ambient_temperature_c",
+            "main_reservoir_pressure_mpa", "brake_cylinder_pressure_mpa",
+            "brake_pad_wear_pct_remaining", "solenoid_valve_residual_signal_mv",
+            "parking_brake_status", "active_error_codes",
+            "error_code_frequency_per_hour", "operating_hours_since_last_service_h",
+            "mtbf_h", "mttr_h", "locomotive_availability_pct",
+            "distance_since_last_overhaul_km",
+            "gps_lat", "gps_lon", "track_gradient_permille",
+            "speed_limit_kmh", "vertical_dynamics_coefficient",
+            "frame_force_kn", "rail_surface_state",
+        ]
+        header = ["event_id", "locomotive_id", "timestamp", "locomotive_type",
+                   "health_score", "health_grade"] + telemetry_fields
+        writer.writerow(header)
+
         for item in items:
             telemetry = item.telemetry
             health = item.health
-            writer.writerow(
-                [
-                    item.event_id,
-                    telemetry.locomotive_id,
-                    telemetry.timestamp.isoformat(),
-                    telemetry.locomotive_type,
-                    health["score"],
-                    health["grade"],
-                    telemetry.speed_kmh,
-                    telemetry.tractive_effort_kn,
-                    telemetry.wheel_slip_ratio_pct,
-                    telemetry.engine_oil_temperature_c,
-                    telemetry.coolant_temperature_c,
-                    telemetry.main_reservoir_pressure_mpa,
-                ]
-            )
+            row = [
+                item.event_id,
+                telemetry.locomotive_id,
+                telemetry.timestamp.isoformat(),
+                telemetry.locomotive_type,
+                health["score"],
+                health["grade"],
+            ]
+            for field_name in telemetry_fields:
+                row.append(getattr(telemetry, field_name, None))
+            writer.writerow(row)
         return buffer.getvalue()

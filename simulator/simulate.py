@@ -10,14 +10,48 @@ import urllib.request
 from datetime import UTC, datetime
 
 
-BASE_LOCATIONS = {
-    "KZ8A": (43.238949, 76.889709),
-    "TE33A": (51.169392, 71.449074),
+# Real KTZ Almaty–Astana corridor waypoints (~1,200 km)
+ALMATY_ASTANA_CORRIDOR = [
+    (43.2389, 76.8897),   # Almaty-1
+    (43.3012, 76.7245),   # Almaty-2
+    (43.4567, 76.2134),   # Kapshagai
+    (43.5890, 75.5423),   # Ushtobe
+    (43.6012, 73.7561),   # Shu junction
+    (44.0523, 72.8734),   # Moyynty
+    (45.2345, 71.4312),   # Zhezkazgan branch
+    (47.1234, 70.2345),   # Karaganda outskirts
+    (49.8047, 73.0856),   # Karaganda
+    (50.2834, 72.0912),   # Temirtau
+    (50.9234, 71.6234),   # Aqmola
+    (51.1694, 71.4491),   # Astana
+]
+
+# Reverse for Astana-originating TE33A
+ASTANA_ALMATY_CORRIDOR = list(reversed(ALMATY_ASTANA_CORRIDOR))
+
+CORRIDOR_BY_TYPE = {
+    "KZ8A": ALMATY_ASTANA_CORRIDOR,
+    "TE33A": ASTANA_ALMATY_CORRIDOR,
 }
 
 
+def _interpolate_position(corridor: list[tuple[float, float]], tick: int, total_ticks: int = 500) -> tuple[float, float]:
+    """Interpolate GPS position along the real corridor based on tick progress."""
+    progress = (tick % total_ticks) / total_ticks
+    segment_count = len(corridor) - 1
+    exact_idx = progress * segment_count
+    idx = int(exact_idx)
+    frac = exact_idx - idx
+    if idx >= segment_count:
+        return corridor[-1]
+    lat = corridor[idx][0] + (corridor[idx + 1][0] - corridor[idx][0]) * frac
+    lon = corridor[idx][1] + (corridor[idx + 1][1] - corridor[idx][1]) * frac
+    return (round(lat, 6), round(lon, 6))
+
+
 def build_event(locomotive_id: str, locomotive_type: str, tick: int, degraded: bool) -> dict[str, object]:
-    lat, lon = BASE_LOCATIONS[locomotive_type]
+    corridor = CORRIDOR_BY_TYPE[locomotive_type]
+    lat, lon = _interpolate_position(corridor, tick)
     phase = tick / 8
     speed = 70 + math.sin(phase) * 18 + (12 if degraded else 0)
     slip = 1.2 + abs(math.sin(phase * 1.5)) * (4.6 if degraded else 1.1)
@@ -69,8 +103,8 @@ def build_event(locomotive_id: str, locomotive_type: str, tick: int, degraded: b
         "mttr_h": 14 if degraded else 4,
         "locomotive_availability_pct": 83 if degraded else 97,
         "distance_since_last_overhaul_km": 82000 if degraded else 15000,
-        "gps_lat": round(lat + tick * 0.0008, 6),
-        "gps_lon": round(lon + tick * 0.0011, 6),
+        "gps_lat": lat,
+        "gps_lon": lon,
         "track_gradient_permille": round(math.sin(phase / 2) * 9, 2),
         "speed_limit_kmh": 120,
         "vertical_dynamics_coefficient": round(0.45 + abs(math.sin(phase)) * (1.05 if degraded else 0.28), 2),

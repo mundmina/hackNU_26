@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.auth import create_access_token, decode_token
+from app.core.evaluation import compute_full_report
 from app.core.metrics import MetricsRegistry
 from app.core.settings import settings
 from app.schemas.auth import LoginRequest, TokenResponse
@@ -128,6 +129,94 @@ def locomotive_health(locomotive_id: str, _: Annotated[dict[str, Any], Depends(r
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Locomotive not found")
     health.trend = container.database.trend(locomotive_id, points=120)
     return health
+
+
+@router.get("/locomotives/{locomotive_id}/evaluation")
+def locomotive_evaluation(
+    locomotive_id: str,
+    _: Annotated[dict[str, Any], Depends(require_user)],
+    window: int = 120,
+) -> dict[str, Any]:
+    """
+    Compute §8.1 evaluation metrics for a locomotive over the last `window` events.
+
+    Returns MARE, RMSE, AUROC, Precision, Recall, F1, Monotonicity, Trendability
+    plus an overall quality grade (A–D).
+    """
+    history = container.database.history(locomotive_id=locomotive_id, page=1, page_size=window)
+    if not history:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No telemetry data found")
+
+    hi_scores: list[float] = []
+    formula_scores: list[float] = []
+    fault_labels: list[int] = []
+
+    for item in reversed(history):  # chronological order
+        h = item.health
+        hi_scores.append(h["score"])
+        formula_scores.append(h.get("formula_score", h["score"]))
+        # Label a tick as a "fault" event if grade D or E (score < 50)
+        fault_labels.append(1 if h["score"] < 50 else 0)
+
+    report = compute_full_report(hi_scores, formula_scores, fault_labels)
+    result = report.to_dict()
+    result["grade"] = report.grade()
+    result["locomotive_id"] = locomotive_id
+    result["window_events"] = len(hi_scores)
+    result["fault_events"] = sum(fault_labels)
+    return result
+
+
+@router.get("/locomotives/{locomotive_id}/kpis")
+def locomotive_kpis(locomotive_id: str, _: Annotated[dict[str, Any], Depends(require_user)]) -> dict[str, Any]:
+    """Return Operational KPIs from plan_v2 §8.3 for the given locomotive."""
+    health = container.database.latest_health(locomotive_id)
+    if health is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Locomotive not found")
+
+    # Retrieve the latest telemetry event for live sensor readings
+    history = container.database.history(locomotive_id=locomotive_id, page=1, page_size=1)
+    if not history:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No telemetry available")
+
+    tel = history[0].telemetry
+
+    # Fuel efficiency (plan §8.3)
+    # TE33A diesel: km/L = speed_kmh / fuel_consumption_lph (instantaneous)
+    # KZ8A electric: kWh/km = electric_power_kw / speed_kmh (instantaneous)
+    fuel_efficiency: float | None = None
+    fuel_efficiency_unit: str = ""
+    if tel.locomotive_type == "TE33A" and tel.fuel_consumption_lph and tel.fuel_consumption_lph > 0 and tel.speed_kmh > 0:
+        fuel_efficiency = round(tel.speed_kmh / tel.fuel_consumption_lph, 4)
+        fuel_efficiency_unit = "km/L"
+    elif tel.locomotive_type == "KZ8A" and tel.electric_power_kw and tel.electric_power_kw > 0 and tel.speed_kmh > 0:
+        fuel_efficiency = round(tel.electric_power_kw / tel.speed_kmh, 3)
+        fuel_efficiency_unit = "kWh/km"
+
+    # Wheel wear rate proxy (plan §8.3: mm/10^4 km)
+    # Derived from vibration amplitude — higher vibration correlates with faster wear.
+    # Formula: wear_rate ≈ vibration_amplitude_mms * 0.008  (empirical proxy, mm/10^4 km)
+    wheel_wear_rate = round(tel.vibration_amplitude_mms * 0.008, 4)
+
+    return {
+        "locomotive_id": locomotive_id,
+        "timestamp": tel.timestamp.isoformat(),
+        "health_score": health.score,
+        "health_grade": health.grade,
+        # §8.3 KPIs
+        "locomotive_availability_pct": tel.locomotive_availability_pct,
+        "mtbf_h": tel.mtbf_h,
+        "mttr_h": tel.mttr_h,
+        "fuel_efficiency": fuel_efficiency,
+        "fuel_efficiency_unit": fuel_efficiency_unit,
+        "wheel_wear_rate_mm_per_10k_km": wheel_wear_rate,
+        "brake_pad_remaining_life_pct": tel.brake_pad_wear_pct_remaining,
+        # Reliability trend
+        "operating_hours_since_last_service_h": tel.operating_hours_since_last_service_h,
+        "distance_since_last_overhaul_km": tel.distance_since_last_overhaul_km,
+        "active_error_codes": tel.active_error_codes,
+        "error_code_frequency_per_hour": tel.error_code_frequency_per_hour,
+    }
 
 
 @router.get("/telemetry", response_model=list[EnrichedTelemetry])

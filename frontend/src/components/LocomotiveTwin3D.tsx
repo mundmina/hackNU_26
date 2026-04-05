@@ -19,8 +19,8 @@ export function LocomotiveTwin3D({ health }: LocomotiveTwin3DProps) {
   return (
     <section className="panel twin-panel">
       <div className="panel-header">
-        <p>3D Locomotive Twin</p>
-        <span className="muted">Subsystem overlays</span>
+        <p>3D-модель локомотива</p>
+        <span className="muted">Наложение по подсистемам</span>
       </div>
       <div className="twin-shell">
         <Canvas camera={{ position: [4, 2.5, 6], fov: 42 }}>

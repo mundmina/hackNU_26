@@ -16,3 +16,4 @@ class Alert(BaseModel):
     status: str = "open"
     source: str
     details: dict[str, Any] = Field(default_factory=dict)
+    recommendation: str = ""

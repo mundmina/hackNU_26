@@ -16,7 +16,16 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(build_api_router(), prefix=settings.api_prefix)
+
+    api_router = build_api_router()
+    app.include_router(api_router, prefix=settings.api_prefix)
+
+    # Expose health and metrics at root level too (standard ops convention)
+    @app.get("/health", include_in_schema=False)
+    def root_health():
+        from app.api.routes import container
+        return container.database.ping()
+
     return app
 
 

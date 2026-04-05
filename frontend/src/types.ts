@@ -82,6 +82,7 @@ export interface AlertItem {
   status: string;
   source: string;
   details: Record<string, unknown>;
+  recommendation: string;
 }
 
 export interface EnrichedTelemetry {

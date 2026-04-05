@@ -1,8 +1,22 @@
 import type { EnrichedTelemetry, FleetCard, HealthSnapshot, AlertItem } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE = `${RAW_BASE}/api`;
 
 type HttpMethod = "GET" | "POST";
+
+function translateApiError(message: string, status: number) {
+  const normalized = message.trim();
+
+  if (normalized === "Invalid credentials") return "Неверный логин или пароль";
+  if (normalized === "Missing bearer token") return "Отсутствует токен авторизации";
+  if (normalized === "Invalid or expired token") return "Токен недействителен или срок его действия истёк";
+  if (normalized === "Locomotive not found") return "Локомотив не найден";
+  if (normalized === "No telemetry data found") return "Данные телеметрии не найдены";
+  if (normalized === "No telemetry available") return "Телеметрия недоступна";
+
+  return normalized || `Ошибка запроса (${status})`;
+}
 
 async function request<T>(path: string, token?: string, init?: { method?: HttpMethod; body?: unknown }): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -15,8 +29,17 @@ async function request<T>(path: string, token?: string, init?: { method?: HttpMe
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    const contentType = response.headers.get("content-type") ?? "";
+    let message = "";
+
+    if (contentType.includes("application/json")) {
+      const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+      message = typeof body?.detail === "string" ? body.detail : "";
+    } else {
+      message = await response.text();
+    }
+
+    throw new Error(translateApiError(message, response.status));
   }
 
   if (response.headers.get("content-type")?.includes("application/json")) {

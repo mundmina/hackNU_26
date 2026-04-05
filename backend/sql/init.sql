@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     message TEXT NOT NULL,
     status TEXT NOT NULL,
     source TEXT NOT NULL,
-    details_json JSONB NOT NULL
+    details_json JSONB NOT NULL,
+    recommendation TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_locomotive_time
